@@ -106,9 +106,9 @@
     .dim-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
     /* shape tabs */
-    .shape-tabs { display: flex; gap: 6px; }
+    .shape-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
     .shape-tab {
-      flex: 1;
+      flex: 1 1 calc(50% - 3px);
       padding: 8px 4px 7px;
       border: 1.5px solid var(--border);
       border-radius: 8px;
@@ -310,6 +310,12 @@
           </svg>
           Oval
         </button>
+        <button class="shape-tab" data-shape="octagon" onclick="setShape('octagon')">
+          <svg viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 2 L17 2 L24 9 L24 17 L17 24 L9 24 L2 17 L2 9 Z"/>
+          </svg>
+          Octagon
+        </button>
       </div>
     </div>
 
@@ -343,6 +349,13 @@
           <div class="field"><label>Height</label>
             <input id="d-oh" type="number" value="90" min="0.25" step="0.25">
           </div>
+        </div>
+      </div>
+
+      <!-- Octagon dims -->
+      <div id="dims-oct" class="conditional">
+        <div class="field"><label>Size (width across)</label>
+          <input id="d-oct" type="number" value="12" min="0.25" step="0.25">
         </div>
       </div>
     </div>
@@ -490,9 +503,10 @@ function val(id, fallback) {
 function txt(id) { return document.getElementById(id).value.trim(); }
 
 function getDims() {
-  if (shape === 'rectangle') return { w: val('d-w', 19),  h: val('d-h', 111) };
+  if (shape === 'rectangle') return { w: val('d-w', 19),   h: val('d-h', 111)  };
   if (shape === 'circle')    return { w: val('d-dia', 76), h: val('d-dia', 76) };
   if (shape === 'oval')      return { w: val('d-ow', 60),  h: val('d-oh', 90)  };
+  if (shape === 'octagon')   return { w: val('d-oct', 12), h: val('d-oct', 12) };
 }
 
 function getLayout() {
@@ -542,9 +556,10 @@ function setShape(s) {
   show('dims-rect',    s === 'rectangle');
   show('dims-circle',  s === 'circle');
   show('dims-oval',    s === 'oval');
-  // oval can also have corners
+  show('dims-oct',     s === 'octagon');
+  // corner treatment not applicable to circle or octagon
   document.getElementById('corner-section').style.display =
-    (s === 'circle') ? 'none' : 'block';
+    (s === 'circle' || s === 'octagon') ? 'none' : 'block';
   // notches only apply to rectangles
   document.getElementById('notch-section').style.display =
     (s === 'rectangle') ? 'block' : 'none';
@@ -589,6 +604,12 @@ function buildPath(w, h) {
   if (shape === 'oval') {
     const rx = w / 2, ry = h / 2;
     return `M 0,${ry} A ${rx},${ry} 0 1,0 ${w},${ry} A ${rx},${ry} 0 1,0 0,${ry} Z`;
+  }
+  if (shape === 'octagon') {
+    // Regular octagon: corner cut = size / (2 + √2) so all 8 sides are equal
+    const c = w / (2 + Math.SQRT2);
+    return `M ${c},0 L ${w-c},0 L ${w},${c} L ${w},${h-c} ` +
+           `L ${w-c},${h} L ${c},${h} L 0,${h-c} L 0,${c} Z`;
   }
   // Rectangle variants
   if (corner === 'square') {
@@ -805,8 +826,9 @@ function cutSizeLabel({ w, h }) {
   const { cols, rows } = getLayout();
   const count = cols * rows;
   let s = '';
-  if (shape === 'circle')      s = `${w}" Round`;
-  else if (shape === 'oval')   s = `${w}" × ${h}" Oval`;
+  if (shape === 'circle')        s = `${w}" Round`;
+  else if (shape === 'oval')     s = `${w}" × ${h}" Oval`;
+  else if (shape === 'octagon')  s = `${w}" Octagon`;
   else {
     s = `${w}" × ${h}"`;
     if (corner === 'mitered')   s += `, ${val('d-miter',1)}" mitre cut on all 4 corners`;
@@ -934,6 +956,13 @@ function buildExportDXF({ w, h }) {
         const ratio  = (h/2) / majorR;
         entities += `0\nELLIPSE\n8\n0\n10\n${cx}\n20\n${cy}\n30\n0.0\n` +
                     `11\n${majorR}\n21\n0.0\n31\n0.0\n40\n${ratio}\n41\n0.0\n42\n6.283185307\n`;
+      } else if (shape === 'octagon') {
+        const c = w / (2 + Math.SQRT2);
+        const pts = [[c,0],[w-c,0],[w,c],[w,h-c],[w-c,h],[c,h],[0,h-c],[0,c]];
+        entities += `0\nLWPOLYLINE\n8\n0\n90\n${pts.length}\n70\n1\n`;
+        for (const [x, y] of pts) {
+          entities += `10\n${+(x + dx).toFixed(6)}\n20\n${+(y + dy).toFixed(6)}\n`;
+        }
       } else {
         // Rectangle variants – output as LWPOLYLINE
         let pts = [];
