@@ -523,7 +523,7 @@ function buildPreviewSVG({ w, h }) {
   const sh = h * scale;
 
   // Padding around the shape for callout lines
-  const PL = 55, PR = 65, PT = 44, PB = shape === 'rectangle' && corner === 'mitered' ? 52 : 28;
+  const PL = 55, PR = 65, PT = 44, PB = shape === 'rectangle' && corner === 'mitered' ? 90 : 28;
   const totalW = sw + PL + PR;
   const totalH = sh + PT + PB;
 
@@ -581,10 +581,14 @@ function buildPreviewSVG({ w, h }) {
 
     // Miter callout label
     if (shape !== 'oval' && corner === 'mitered') {
-      const labelX = ox - 5;
-      const labelY = oy + sh + 36;
-      const arrowTipX = ox + (miter * scale) / 2;
-      const arrowTipY = oy + sh - (miter * scale) / 2;
+      // Label sits in the lower-left below the shape.
+      // Arrow travels from entirely below the shape up to the bottom-left
+      // corner edge — it never crosses the shape interior.
+      const labelY  = oy + sh + 58;           // well below the shape
+      const arrowTipX = ox + (miter * scale) * 0.5;   // bottom edge, left miter point
+      const arrowTipY = oy + sh;                       // on the bottom edge (outside shape)
+      const arrowStartX = 175;                // right of label text, still below shape
+      const arrowStartY = labelY - 10;
 
       annots += `
         <defs>
@@ -593,12 +597,12 @@ function buildPreviewSVG({ w, h }) {
             <path d="M0,0 L0,7 L7,3.5 Z" fill="#333"/>
           </marker>
         </defs>
-        <line x1="${labelX + 130}" y1="${labelY - 10}"
+        <line x1="${arrowStartX}" y1="${arrowStartY}"
               x2="${arrowTipX}" y2="${arrowTipY}"
               stroke="#333" stroke-width="1"
               marker-end="url(#arr)"/>
-        <text x="${labelX + 68}" y="${labelY + 5}"
-              text-anchor="middle" font-size="12.5" fill="#333"
+        <text x="5" y="${labelY + 5}"
+              text-anchor="start" font-size="12.5" fill="#333"
               font-family="Helvetica, Arial, sans-serif">
           ${miter}" miter cut on all 4 corners
         </text>`;
