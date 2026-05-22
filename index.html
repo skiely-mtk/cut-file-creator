@@ -381,6 +381,21 @@
       </div>
     </div>
 
+    <!-- NOTCHES -->
+    <div id="notch-section" class="s-section" style="display:none">
+      <h3>Notches</h3>
+      <div class="field">
+        <label>Along width — segments (in)</label>
+        <input id="n-w-segs" type="text" placeholder="e.g. 10, 21, 17">
+        <div style="font-size:11px;color:#888;margin-top:3px">Comma-separated gaps between notches / edges. Leave blank for none.</div>
+      </div>
+      <div class="field" style="margin-top:8px">
+        <label>Along height — segments (in)</label>
+        <input id="n-h-segs" type="text" placeholder="e.g. 5, 8, 4.5">
+        <div style="font-size:11px;color:#888;margin-top:3px">Comma-separated gaps between notches / edges. Leave blank for none.</div>
+      </div>
+    </div>
+
     <!-- LAYOUT / QUANTITY -->
     <div class="s-section">
       <h3>Layout / Quantity</h3>
@@ -467,6 +482,35 @@ function getLayout() {
   return { cols, rows, gap };
 }
 
+function getNotches() {
+  if (shape !== 'rectangle') return { wPositions: [], hPositions: [], wSegs: [], hSegs: [] };
+
+  const parseSegs = (id, total) => {
+    const el = document.getElementById(id);
+    if (!el || !el.value.trim()) return { positions: [], segs: [] };
+    const segs = el.value.split(/[\s,/]+/).map(Number).filter(n => !isNaN(n) && n > 0);
+    if (segs.length < 2) return { positions: [], segs };
+    // Notch positions = cumulative sums of all segments except the last
+    const positions = [];
+    let cum = 0;
+    for (let i = 0; i < segs.length - 1; i++) {
+      cum += segs[i];
+      if (cum > 0 && cum < total) positions.push(+cum.toFixed(6));
+    }
+    return { positions, segs };
+  };
+
+  const { w, h } = getDims();
+  const wn = parseSegs('n-w-segs', w);
+  const hn = parseSegs('n-h-segs', h);
+  return {
+    wPositions: wn.positions,   // notch positions along width (inches from left)
+    hPositions: hn.positions,   // notch positions along height (inches from top)
+    wSegs: wn.segs,             // original segments for label
+    hSegs: hn.segs,
+  };
+}
+
 /* ═══════════════════════════════════════════════════════════
    SHAPE SETTERS
 ═══════════════════════════════════════════════════════════ */
@@ -481,6 +525,9 @@ function setShape(s) {
   // oval can also have corners
   document.getElementById('corner-section').style.display =
     (s === 'circle') ? 'none' : 'block';
+  // notches only apply to rectangles
+  document.getElementById('notch-section').style.display =
+    (s === 'rectangle') ? 'block' : 'none';
   update();
 }
 
@@ -655,11 +702,39 @@ function buildPreviewSVG({ w, h }) {
     }
   }
 
+  // --- Notch tick marks (drawn in screen coords so size is constant) ---
+  const notches = getNotches();
+  let notchMarks = '';
+  const TICK = 8;   // px above and below the edge
+  const TICK_STROKE = `stroke="#1a1a1a" stroke-width="1.5"`;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const px = ox + c * (sw + sgap);   // piece origin x (screen)
+      const py = oy + r * (sh + sgap);   // piece origin y (screen)
+
+      // Notches along width: tick marks on top and bottom edges
+      for (const np of notches.wPositions) {
+        const sx = px + np * scale;
+        notchMarks += `<line x1="${sx}" y1="${py - TICK}" x2="${sx}" y2="${py + TICK}" ${TICK_STROKE}/>`;
+        notchMarks += `<line x1="${sx}" y1="${py + sh - TICK}" x2="${sx}" y2="${py + sh + TICK}" ${TICK_STROKE}/>`;
+      }
+
+      // Notches along height: tick marks on left and right edges
+      for (const np of notches.hPositions) {
+        const sy = py + np * scale;
+        notchMarks += `<line x1="${px - TICK}" y1="${sy}" x2="${px + TICK}" y2="${sy}" ${TICK_STROKE}/>`;
+        notchMarks += `<line x1="${px + sw - TICK}" y1="${sy}" x2="${px + sw + TICK}" y2="${sy}" ${TICK_STROKE}/>`;
+      }
+    }
+  }
+
   return `<svg xmlns="http://www.w3.org/2000/svg"
               width="${svgW}" height="${svgH}"
               style="overflow:visible">
     ${annots}
     ${pieces}
+    ${notchMarks}
   </svg>`;
 }
 
@@ -680,6 +755,13 @@ function cutSizeLabel({ w, h }) {
   const notes = txt('f-notes');
   if (notes) s += ` — ${notes}`;
   if (count > 1) s = `${count} — ${s}`;
+
+  // Append notch descriptions on a new line
+  if (shape === 'rectangle') {
+    const { wSegs, hSegs } = getNotches();
+    if (wSegs.length >= 2) s += `\nnotches at ${wSegs.join('/ ')}`;
+    if (hSegs.length >= 2) s += `\nnotches at ${hSegs.join('/ ')} (height)`;
+  }
   return s;
 }
 
@@ -698,7 +780,9 @@ function update() {
   setText('m-colors',  txt('f-colors'));
   setText('m-product', txt('f-product'));
   setText('m-fabric',  txt('f-fabric'));
-  setText('m-cutsize', cutSizeLabel(dims));
+  // cutsize may have newlines (notch info), so use innerHTML
+  document.getElementById('m-cutsize').innerHTML =
+    (cutSizeLabel(dims) || '—').replace(/\n/g, '<br>');
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -714,15 +798,34 @@ function buildExportSVG({ w, h }) {
   const product = txt('f-product') || '';
   const cutsize = cutSizeLabel({ w, h });
 
+  const notches  = getNotches();
+  const NOTCH_D  = 0.25;   // notch depth in inches
+  const NOTCH_SW = `fill="none" stroke="#000000" stroke-width="0.007"`;
+
   let pieces = '';
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const tx = c * (w + gap);
       const ty = r * (h + gap);
+      let notchLines = '';
+
+      // Notches along width: perpendicular marks on top and bottom edges
+      for (const np of notches.wPositions) {
+        const x = tx + np;
+        notchLines += `  <line x1="${x}" y1="${ty - NOTCH_D}" x2="${x}" y2="${ty + NOTCH_D}" ${NOTCH_SW}/>\n`;
+        notchLines += `  <line x1="${x}" y1="${ty + h - NOTCH_D}" x2="${x}" y2="${ty + h + NOTCH_D}" ${NOTCH_SW}/>\n`;
+      }
+      // Notches along height: perpendicular marks on left and right edges
+      for (const np of notches.hPositions) {
+        const y = ty + np;
+        notchLines += `  <line x1="${tx - NOTCH_D}" y1="${y}" x2="${tx + NOTCH_D}" y2="${y}" ${NOTCH_SW}/>\n`;
+        notchLines += `  <line x1="${tx + w - NOTCH_D}" y1="${y}" x2="${tx + w + NOTCH_D}" y2="${y}" ${NOTCH_SW}/>\n`;
+      }
+
       pieces += `  <g transform="translate(${tx},${ty})">
     <path d="${path}" fill="none" stroke="#000000"
           stroke-width="0.007" stroke-linecap="butt" stroke-linejoin="miter"/>
-  </g>\n`;
+  </g>\n${notchLines}`;
     }
   }
 
@@ -801,6 +904,24 @@ function buildExportDXF({ w, h }) {
         for (const [x, y] of pts) {
           entities += `10\n${+(x + dx).toFixed(6)}\n20\n${+(y + dy).toFixed(6)}\n`;
         }
+      }
+
+      // Notch lines (0.25" deep, perpendicular to the edge)
+      const notches = getNotches();
+      const ND = 0.25;
+      const dxfLine = (x1, y1, x2, y2) =>
+        `0\nLINE\n8\n0\n10\n${+x1.toFixed(6)}\n20\n${+y1.toFixed(6)}\n30\n0.0\n` +
+        `11\n${+x2.toFixed(6)}\n21\n${+y2.toFixed(6)}\n31\n0.0\n`;
+
+      for (const np of notches.wPositions) {
+        const x = dx + np;
+        entities += dxfLine(x, dy - ND, x, dy + ND);           // top edge
+        entities += dxfLine(x, dy + h - ND, x, dy + h + ND);   // bottom edge
+      }
+      for (const np of notches.hPositions) {
+        const y = dy + np;
+        entities += dxfLine(dx - ND, y, dx + ND, y);           // left edge
+        entities += dxfLine(dx + w - ND, y, dx + w + ND, y);   // right edge
       }
     }
   }
