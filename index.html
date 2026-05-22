@@ -725,9 +725,10 @@ function buildPreviewSVG({ w, h }) {
   const extraW = (rotSW - sw) / 2;
   const extraH = (rotSH - sh) / 2;
 
-  const hasMiterAnnot = shape === 'rectangle' && (corner === 'mitered' || corner === 'mitered2');
+  const hasCornerAnnot = shape === 'rectangle' &&
+    (corner === 'mitered' || corner === 'mitered2' || corner === 'rounded' || corner === 'rounded2');
   const PL = 55 + extraW,  PR = 65 + extraW;
-  const PT = 44 + extraH,  PB = (hasMiterAnnot ? 90 : 28) + extraH;
+  const PT = 44 + extraH,  PB = (hasCornerAnnot ? 90 : 28) + extraH;
   const svgW = totalGridW + PL + PR;
   const svgH = totalGridH + PT + PB;
   const ox = PL, oy = PT;
@@ -775,26 +776,30 @@ function buildPreviewSVG({ w, h }) {
       <text x="${hX + 9/scale}" y="${h/2}" dominant-baseline="middle"
             font-size="${fs}" ${TS}>${h}"</text>`;
 
-    // Miter callout — below the bottom edge, arrow pointing to mitered corner
-    if (hasMiterAnnot) {
-      const miter    = val('d-miter', 1);
-      const safeM    = Math.min(miter, w/2 - 0.01, h/2 - 0.01);
-      const isMiter2 = corner === 'mitered2';
-      const labelY   = h + 58/scale;
-      const tipX     = (isMiter2 && cornerEnd === 'right') ? w - safeM * 0.5 : safeM * 0.5;
-      const tipY     = h;
-      const startX   = (isMiter2 && cornerEnd === 'right')
-                       ? Math.max(tipX - 40/scale, w * 0.5)
-                       : w * 0.5;
-      const startY   = labelY - 10/scale;
-      const clabel   = isMiter2 ? '2 corners' : 'all 4 corners';
+    // Corner callout (miter or rounded) — below the bottom edge
+    if (hasCornerAnnot) {
+      const isMiter   = corner === 'mitered' || corner === 'mitered2';
+      const is2       = corner === 'mitered2' || corner === 'rounded2';
+      const annotVal  = isMiter ? val('d-miter', 1) : val('d-radius', 0.5);
+      const safeVal   = Math.min(annotVal, w/2 - 0.01, h/2 - 0.01);
+      const labelY    = h + 58/scale;
+      const tipX      = (is2 && cornerEnd === 'right') ? w - safeVal * 0.5 : safeVal * 0.5;
+      const tipY      = h;
+      const startX    = (is2 && cornerEnd === 'right')
+                        ? Math.max(tipX - 40/scale, w * 0.5)
+                        : w * 0.5;
+      const startY    = labelY - 10/scale;
+      const clabel    = is2 ? '2 corners' : 'all 4 corners';
+      const labelText = isMiter
+                        ? `${annotVal}" miter cut on ${clabel}`
+                        : `${annotVal}" radius on ${clabel}`;
 
-      // Arrowhead: hand-drawn filled triangle (avoids SVG marker complexity in transforms)
+      // Arrowhead: hand-drawn filled triangle
       const adx = tipX - startX, ady = tipY - startY;
       const alen = Math.sqrt(adx*adx + ady*ady) || 1;
-      const anx  = adx/alen, any = ady/alen;   // unit vector along arrow
-      const al   = 8/scale, aw = 4/scale;      // arrowhead length and half-width
-      const px   = -any * aw,  py  = anx * aw; // perpendicular
+      const anx  = adx/alen, any = ady/alen;
+      const al   = 8/scale, aw = 4/scale;
+      const px   = -any * aw,  py = anx * aw;
       const ax1  = tipX - anx*al + px, ay1 = tipY - any*al + py;
       const ax2  = tipX - anx*al - px, ay2 = tipY - any*al - py;
 
@@ -805,7 +810,7 @@ function buildPreviewSVG({ w, h }) {
         <text x="${-5/scale}" y="${labelY + 5/scale}" text-anchor="start"
               font-size="${12.5/scale}" fill="#333"
               font-family="Helvetica, Arial, sans-serif">
-          ${miter}" miter cut on ${clabel}
+          ${labelText}
         </text>`;
     }
   }
