@@ -132,9 +132,9 @@
     .shape-tab svg { width: 26px; height: 26px; }
 
     /* corner options */
-    .corner-opts { display: flex; gap: 6px; }
+    .corner-opts { display: flex; gap: 6px; flex-wrap: wrap; }
     .corner-opt {
-      flex: 1;
+      flex: 1 1 calc(33% - 6px);
       padding: 8px 4px 7px;
       border: 1.5px solid var(--border);
       border-radius: 8px;
@@ -369,6 +369,18 @@
           </svg>
           Rounded
         </div>
+        <div class="corner-opt" data-corner="mitered2" onclick="setCorner('mitered2')">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 3 L15 3 L19 7 L19 15 L15 19 L3 19 Z"/>
+          </svg>
+          Miter 2
+        </div>
+        <div class="corner-opt" data-corner="rounded2" onclick="setCorner('rounded2')">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 3 L15 3 Q19 3 19 7 L19 15 Q19 19 15 19 L3 19 Z"/>
+          </svg>
+          Round 2
+        </div>
       </div>
 
       <div id="miter-field" class="field conditional" style="margin-top:10px">
@@ -378,6 +390,13 @@
       <div id="radius-field" class="field conditional" style="margin-top:10px">
         <label>Corner Radius (in)</label>
         <input id="d-radius" type="number" value="0.5" min="0.125" step="0.125">
+      </div>
+      <div id="corner-end-field" class="field conditional" style="margin-top:10px;display:none">
+        <label>Which end</label>
+        <select id="d-corner-end" onchange="setCornerEnd(this.value)">
+          <option value="right">Right / bottom end</option>
+          <option value="left">Left / top end</option>
+        </select>
       </div>
     </div>
 
@@ -457,8 +476,9 @@
 /* ═══════════════════════════════════════════════════════════
    STATE
 ═══════════════════════════════════════════════════════════ */
-let shape  = 'rectangle';   // 'rectangle' | 'circle' | 'oval'
-let corner = 'square';      // 'square'    | 'mitered' | 'rounded'
+let shape     = 'rectangle';   // 'rectangle' | 'circle' | 'oval'
+let corner    = 'square';      // 'square' | 'mitered' | 'rounded' | 'mitered2' | 'rounded2'
+let cornerEnd = 'right';       // 'right' (top-right+bottom-right) | 'left' (top-left+bottom-left)
 
 /* ═══════════════════════════════════════════════════════════
    HELPERS – READ CURRENT INPUT VALUES
@@ -535,8 +555,14 @@ function setCorner(c) {
   corner = c;
   document.querySelectorAll('.corner-opt').forEach(o =>
     o.classList.toggle('active', o.dataset.corner === c));
-  show('miter-field',  c === 'mitered');
-  show('radius-field', c === 'rounded');
+  show('miter-field',      c === 'mitered'  || c === 'mitered2');
+  show('radius-field',     c === 'rounded'  || c === 'rounded2');
+  show('corner-end-field', c === 'mitered2' || c === 'rounded2');
+  update();
+}
+
+function setCornerEnd(e) {
+  cornerEnd = e;
   update();
 }
 
@@ -583,6 +609,33 @@ function buildPath(w, h) {
            `L ${safeR},${h} Q 0,${h} 0,${h-safeR} ` +
            `L 0,${safeR} Q 0,0 ${safeR},0 Z`;
   }
+  if (corner === 'mitered2') {
+    const m = val('d-miter', 1);
+    const safeM = Math.min(m, w/2 - 0.01, h/2 - 0.01);
+    if (cornerEnd === 'right') {
+      // top-right + bottom-right mitered, left corners square
+      return `M 0,0 L ${w-safeM},0 L ${w},${safeM} ` +
+             `L ${w},${h-safeM} L ${w-safeM},${h} L 0,${h} Z`;
+    } else {
+      // top-left + bottom-left mitered, right corners square
+      return `M ${safeM},0 L ${w},0 L ${w},${h} ` +
+             `L ${safeM},${h} L 0,${h-safeM} L 0,${safeM} Z`;
+    }
+  }
+  if (corner === 'rounded2') {
+    const r = val('d-radius', 0.5);
+    const safeR = Math.min(r, w/2 - 0.01, h/2 - 0.01);
+    if (cornerEnd === 'right') {
+      // top-right + bottom-right rounded, left corners square
+      return `M 0,0 L ${w-safeR},0 Q ${w},0 ${w},${safeR} ` +
+             `L ${w},${h-safeR} Q ${w},${h} ${w-safeR},${h} L 0,${h} Z`;
+    } else {
+      // top-left + bottom-left rounded, right corners square
+      return `M ${safeR},0 L ${w},0 L ${w},${h} ` +
+             `L ${safeR},${h} Q 0,${h} 0,${h-safeR} ` +
+             `L 0,${safeR} Q 0,0 ${safeR},0 Z`;
+    }
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -606,7 +659,7 @@ function buildPreviewSVG({ w, h }) {
 
   // Padding around the grid for callout lines
   const PL = 55, PR = 65, PT = 44;
-  const PB = shape === 'rectangle' && corner === 'mitered' ? 90 : 28;
+  const PB = shape === 'rectangle' && (corner === 'mitered' || corner === 'mitered2') ? 90 : 28;
   const svgW = totalGridW + PL + PR;
   const svgH = totalGridH + PT + PB;
 
@@ -676,12 +729,19 @@ function buildPreviewSVG({ w, h }) {
       </text>`;
 
     // Miter callout label — below the entire grid
-    if (shape !== 'oval' && corner === 'mitered') {
-      const labelY    = oy + totalGridH + 58;
-      const arrowTipX = ox + (miter * scale) * 0.5;
-      const arrowTipY = oy + totalGridH;
-      const arrowStartX = 175;
+    if (shape !== 'oval' && (corner === 'mitered' || corner === 'mitered2')) {
+      const isMiter2   = corner === 'mitered2';
+      const labelY     = oy + totalGridH + 58;
+      // Arrow tip points to one of the mitered corners at the bottom of the first piece
+      const arrowTipX  = (isMiter2 && cornerEnd === 'right')
+                         ? ox + sw - (miter * scale) * 0.5
+                         : ox + (miter * scale) * 0.5;
+      const arrowTipY  = oy + totalGridH;
+      const arrowStartX = (isMiter2 && cornerEnd === 'right')
+                          ? Math.max(arrowTipX - 40, ox + sw / 2)
+                          : 175;
       const arrowStartY = labelY - 10;
+      const cornerLabel = isMiter2 ? '2 corners' : 'all 4 corners';
 
       annots += `
         <defs>
@@ -697,7 +757,7 @@ function buildPreviewSVG({ w, h }) {
         <text x="5" y="${labelY + 5}"
               text-anchor="start" font-size="12.5" fill="#333"
               font-family="Helvetica, Arial, sans-serif">
-          ${miter}" miter cut on all 4 corners
+          ${miter}" miter cut on ${cornerLabel}
         </text>`;
     }
   }
@@ -749,8 +809,10 @@ function cutSizeLabel({ w, h }) {
   else if (shape === 'oval')   s = `${w}" × ${h}" Oval`;
   else {
     s = `${w}" × ${h}"`;
-    if (corner === 'mitered')  s += `, ${val('d-miter',1)}" mitre cut on all 4 corners`;
-    if (corner === 'rounded')  s += `, ${val('d-radius',0.5)}" corner radius`;
+    if (corner === 'mitered')   s += `, ${val('d-miter',1)}" mitre cut on all 4 corners`;
+    if (corner === 'mitered2')  s += `, ${val('d-miter',1)}" mitre on 2 corners`;
+    if (corner === 'rounded')   s += `, ${val('d-radius',0.5)}" corner radius`;
+    if (corner === 'rounded2')  s += `, ${val('d-radius',0.5)}" radius on 2 corners`;
   }
   const notes = txt('f-notes');
   if (notes) s += ` — ${notes}`;
@@ -880,6 +942,15 @@ function buildExportDXF({ w, h }) {
         } else if (corner === 'mitered') {
           const m = Math.min(val('d-miter',1), w/2-0.01, h/2-0.01);
           pts = [[m,0],[w-m,0],[w,m],[w,h-m],[w-m,h],[m,h],[0,h-m],[0,m]];
+        } else if (corner === 'mitered2') {
+          const m = Math.min(val('d-miter',1), w/2-0.01, h/2-0.01);
+          if (cornerEnd === 'right') {
+            // top-right + bottom-right mitered, left corners square
+            pts = [[0,0],[w-m,0],[w,m],[w,h-m],[w-m,h],[0,h]];
+          } else {
+            // top-left + bottom-left mitered, right corners square
+            pts = [[m,0],[w,0],[w,h],[m,h],[0,h-m],[0,m]];
+          }
         } else if (corner === 'rounded') {
           // Approximate rounded corners with 8-point arc interpolation per corner
           const rad = Math.min(val('d-radius',0.5), w/2-0.01, h/2-0.01);
@@ -898,6 +969,35 @@ function buildExportDXF({ w, h }) {
             ...arc(w-rad, h-rad,   0,  90),  // bottom-right
             ...arc(rad,   h-rad,  90, 180),  // bottom-left
           ];
+        } else if (corner === 'rounded2') {
+          // Approximate 2 rounded corners, 2 square corners
+          const rad = Math.min(val('d-radius',0.5), w/2-0.01, h/2-0.01);
+          const steps = 8;
+          const arc = (cx, cy, startDeg, endDeg) => {
+            const out = [];
+            for (let i = 0; i <= steps; i++) {
+              const a = (startDeg + (endDeg - startDeg) * i / steps) * Math.PI / 180;
+              out.push([cx + rad * Math.cos(a), cy + rad * Math.sin(a)]);
+            }
+            return out;
+          };
+          if (cornerEnd === 'right') {
+            // top-right + bottom-right rounded, left corners square
+            pts = [
+              [0, 0],
+              ...arc(w-rad, rad,   270, 360),  // top-right
+              ...arc(w-rad, h-rad,   0,  90),  // bottom-right
+              [0, h],
+            ];
+          } else {
+            // top-left + bottom-left rounded, right corners square
+            pts = [
+              ...arc(rad, rad,   180, 270),    // top-left
+              [w, 0],
+              [w, h],
+              ...arc(rad, h-rad,  90, 180),    // bottom-left
+            ];
+          }
         }
 
         entities += `0\nLWPOLYLINE\n8\n0\n90\n${pts.length}\n70\n1\n`;
