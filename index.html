@@ -566,8 +566,7 @@ function buildPreviewSVG({ w, h }) {
   // Grid origin within SVG
   const ox = PL, oy = PT;
 
-  const path    = buildPath(w, h);
-  const strokeW = Math.max(0.8, 1.5 / scale);
+  const path = buildPath(w, h);
 
   // Build all pieces
   let pieces = '';
@@ -577,7 +576,8 @@ function buildPreviewSVG({ w, h }) {
       const ty = oy + r * (sh + sgap);
       pieces += `<g transform="translate(${tx},${ty}) scale(${scale})">
       <path d="${path}" fill="none" stroke="#1a1a1a"
-            stroke-width="${strokeW}" stroke-linejoin="miter" stroke-linecap="butt"/>
+            stroke-width="1.5" vector-effect="non-scaling-stroke"
+            stroke-linejoin="miter" stroke-linecap="butt"/>
     </g>`;
     }
   }
