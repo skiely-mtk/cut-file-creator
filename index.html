@@ -381,6 +381,25 @@
       </div>
     </div>
 
+    <!-- LAYOUT / QUANTITY -->
+    <div class="s-section">
+      <h3>Layout / Quantity</h3>
+      <div class="dim-row">
+        <div class="field">
+          <label>Columns</label>
+          <input id="l-cols" type="number" value="1" min="1" max="20" step="1">
+        </div>
+        <div class="field">
+          <label>Rows</label>
+          <input id="l-rows" type="number" value="1" min="1" max="20" step="1">
+        </div>
+      </div>
+      <div class="field" style="margin-top:8px">
+        <label>Gap between pieces (in)</label>
+        <input id="l-gap" type="number" value="0" min="0" step="0.125">
+      </div>
+    </div>
+
     <!-- EXPORT -->
     <div class="s-section">
       <h3>Export</h3>
@@ -439,6 +458,13 @@ function getDims() {
   if (shape === 'rectangle') return { w: val('d-w', 19),  h: val('d-h', 111) };
   if (shape === 'circle')    return { w: val('d-dia', 76), h: val('d-dia', 76) };
   if (shape === 'oval')      return { w: val('d-ow', 60),  h: val('d-oh', 90)  };
+}
+
+function getLayout() {
+  const cols = Math.max(1, Math.round(val('l-cols', 1)));
+  const rows = Math.max(1, Math.round(val('l-rows', 1)));
+  const gap  = Math.max(0, val('l-gap', 0));
+  return { cols, rows, gap };
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -516,29 +542,52 @@ function buildPath(w, h) {
    PREVIEW SVG  (scaled to fit, with dimension callouts)
 ═══════════════════════════════════════════════════════════ */
 function buildPreviewSVG({ w, h }) {
-  // --- scale to fit in preview area ---
+  const { cols, rows, gap } = getLayout();
+
+  // --- scale the full grid to fit in preview area ---
   const maxW = 420, maxH = 500;
-  const scale = Math.min(maxW / w, maxH / h);
-  const sw = w * scale;
-  const sh = h * scale;
+  const totalPiecesW = cols * w + (cols - 1) * gap;
+  const totalPiecesH = rows * h + (rows - 1) * gap;
+  const scale = Math.min(maxW / totalPiecesW, maxH / totalPiecesH);
 
-  // Padding around the shape for callout lines
-  const PL = 55, PR = 65, PT = 44, PB = shape === 'rectangle' && corner === 'mitered' ? 90 : 28;
-  const totalW = sw + PL + PR;
-  const totalH = sh + PT + PB;
+  const sw   = w   * scale;   // scaled single-piece width
+  const sh   = h   * scale;   // scaled single-piece height
+  const sgap = gap * scale;   // scaled gap between pieces
 
-  // Shape origin within SVG
+  const totalGridW = cols * sw + (cols - 1) * sgap;
+  const totalGridH = rows * sh + (rows - 1) * sgap;
+
+  // Padding around the grid for callout lines
+  const PL = 55, PR = 65, PT = 44;
+  const PB = shape === 'rectangle' && corner === 'mitered' ? 90 : 28;
+  const svgW = totalGridW + PL + PR;
+  const svgH = totalGridH + PT + PB;
+
+  // Grid origin within SVG
   const ox = PL, oy = PT;
 
-  const path = buildPath(w, h);
+  const path    = buildPath(w, h);
+  const strokeW = Math.max(0.8, 1.5 / scale);
 
-  // --- Callout annotations ---
+  // Build all pieces
+  let pieces = '';
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const tx = ox + c * (sw + sgap);
+      const ty = oy + r * (sh + sgap);
+      pieces += `<g transform="translate(${tx},${ty}) scale(${scale})">
+      <path d="${path}" fill="none" stroke="#1a1a1a"
+            stroke-width="${strokeW}" stroke-linejoin="miter" stroke-linecap="butt"/>
+    </g>`;
+    }
+  }
+
+  // --- Callout annotations (always describe a single piece) ---
   let annots = '';
-  const miter    = val('d-miter', 1);
-  const diameter = val('d-dia', 76);
+  const miter = val('d-miter', 1);
 
   if (shape === 'circle') {
-    // Diameter line through center
+    // Diameter line through center of first piece
     const cx = ox + sw/2, cy = oy + sh/2;
     annots = `
       <line x1="${ox}" y1="${cy}" x2="${ox+sw}" y2="${cy}"
@@ -549,7 +598,7 @@ function buildPreviewSVG({ w, h }) {
         ${w}"
       </text>`;
   } else {
-    // Width callout (top)
+    // Width callout (top of first piece)
     const yt = oy - 22;
     annots += `
       <line x1="${ox}" y1="${yt}" x2="${ox+sw}" y2="${yt}"
@@ -564,8 +613,8 @@ function buildPreviewSVG({ w, h }) {
         ${w}"
       </text>`;
 
-    // Height callout (right)
-    const xr = ox + sw + 22;
+    // Height callout (right side of grid, spanning first piece's height)
+    const xr = ox + totalGridW + 22;
     annots += `
       <line x1="${xr}" y1="${oy}" x2="${xr}" y2="${oy+sh}"
             stroke="#4a7fb5" stroke-width="1.5"/>
@@ -579,15 +628,12 @@ function buildPreviewSVG({ w, h }) {
         ${h}"
       </text>`;
 
-    // Miter callout label
+    // Miter callout label — below the entire grid
     if (shape !== 'oval' && corner === 'mitered') {
-      // Label sits in the lower-left below the shape.
-      // Arrow travels from entirely below the shape up to the bottom-left
-      // corner edge — it never crosses the shape interior.
-      const labelY  = oy + sh + 58;           // well below the shape
-      const arrowTipX = ox + (miter * scale) * 0.5;   // bottom edge, left miter point
-      const arrowTipY = oy + sh;                       // on the bottom edge (outside shape)
-      const arrowStartX = 175;                // right of label text, still below shape
+      const labelY    = oy + totalGridH + 58;
+      const arrowTipX = ox + (miter * scale) * 0.5;
+      const arrowTipY = oy + totalGridH;
+      const arrowStartX = 175;
       const arrowStartY = labelY - 10;
 
       annots += `
@@ -609,20 +655,11 @@ function buildPreviewSVG({ w, h }) {
     }
   }
 
-  const strokeW = Math.max(0.8, 1.5 / scale);
-
   return `<svg xmlns="http://www.w3.org/2000/svg"
-              width="${totalW}" height="${totalH}"
+              width="${svgW}" height="${svgH}"
               style="overflow:visible">
     ${annots}
-    <g transform="translate(${ox},${oy}) scale(${scale})">
-      <path d="${path}"
-            fill="none"
-            stroke="#1a1a1a"
-            stroke-width="${strokeW}"
-            stroke-linejoin="miter"
-            stroke-linecap="butt"/>
-    </g>
+    ${pieces}
   </svg>`;
 }
 
@@ -630,6 +667,8 @@ function buildPreviewSVG({ w, h }) {
    CUT SIZE LABEL  (for spec sheet)
 ═══════════════════════════════════════════════════════════ */
 function cutSizeLabel({ w, h }) {
+  const { cols, rows } = getLayout();
+  const count = cols * rows;
   let s = '';
   if (shape === 'circle')      s = `${w}" Round`;
   else if (shape === 'oval')   s = `${w}" × ${h}" Oval`;
@@ -640,6 +679,7 @@ function cutSizeLabel({ w, h }) {
   }
   const notes = txt('f-notes');
   if (notes) s += ` — ${notes}`;
+  if (count > 1) s = `${count} — ${s}`;
   return s;
 }
 
@@ -666,24 +706,34 @@ function update() {
    Units: inches (width/height in "in", viewBox in inches)
 ═══════════════════════════════════════════════════════════ */
 function buildExportSVG({ w, h }) {
-  const path = buildPath(w, h);
-  const style = txt('f-style') || '';
+  const { cols, rows, gap } = getLayout();
+  const totalW = cols * w + (cols - 1) * gap;
+  const totalH = rows * h + (rows - 1) * gap;
+  const path    = buildPath(w, h);
+  const style   = txt('f-style') || '';
   const product = txt('f-product') || '';
   const cutsize = cutSizeLabel({ w, h });
+
+  let pieces = '';
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const tx = c * (w + gap);
+      const ty = r * (h + gap);
+      pieces += `  <g transform="translate(${tx},${ty})">
+    <path d="${path}" fill="none" stroke="#000000"
+          stroke-width="0.007" stroke-linecap="butt" stroke-linejoin="miter"/>
+  </g>\n`;
+    }
+  }
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!-- Cut File Creator — ${style} ${product} -->
 <!-- Cut Size: ${cutsize} -->
 <!-- Units: 1 user unit = 1 inch -->
 <svg xmlns="http://www.w3.org/2000/svg"
-     width="${w}in" height="${h}in"
-     viewBox="0 0 ${w} ${h}">
-  <path d="${path}"
-        fill="none"
-        stroke="#000000"
-        stroke-width="0.007"
-        stroke-linecap="butt"
-        stroke-linejoin="miter"/>
-</svg>`;
+     width="${totalW}in" height="${totalH}in"
+     viewBox="0 0 ${totalW} ${totalH}">
+${pieces}</svg>`;
 }
 
 function downloadSVG() {
@@ -700,50 +750,58 @@ function downloadSVG() {
    DXF R12 format, INSUNITS = 1 (inches)
 ═══════════════════════════════════════════════════════════ */
 function buildExportDXF({ w, h }) {
+  const { cols, rows, gap } = getLayout();
   const header = `0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n1\n0\nENDSEC\n`;
   let entities = `0\nSECTION\n2\nENTITIES\n`;
 
-  if (shape === 'circle') {
-    const r = w / 2;
-    entities += `0\nCIRCLE\n8\n0\n10\n${r}\n20\n${r}\n30\n0.0\n40\n${r}\n`;
-  } else if (shape === 'oval') {
-    // DXF ELLIPSE: center, major-axis endpoint vector, ratio minor/major
-    const cx = w/2, cy = h/2;
-    const majorR = w/2;    // half of major axis (horizontal)
-    const ratio  = (h/2) / majorR;
-    entities += `0\nELLIPSE\n8\n0\n10\n${cx}\n20\n${cy}\n30\n0.0\n` +
-                `11\n${majorR}\n21\n0.0\n31\n0.0\n40\n${ratio}\n41\n0.0\n42\n6.283185307\n`;
-  } else {
-    // Rectangle – output as LWPOLYLINE
-    let pts = [];
-    if (corner === 'square') {
-      pts = [[0,0],[w,0],[w,h],[0,h]];
-    } else if (corner === 'mitered') {
-      const m = Math.min(val('d-miter',1), w/2-0.01, h/2-0.01);
-      pts = [[m,0],[w-m,0],[w,m],[w,h-m],[w-m,h],[m,h],[0,h-m],[0,m]];
-    } else if (corner === 'rounded') {
-      // Approximate rounded corners with 8-point arc interpolation per corner
-      const r = Math.min(val('d-radius',0.5), w/2-0.01, h/2-0.01);
-      const steps = 8;
-      const arc = (cx, cy, startDeg, endDeg) => {
-        const out = [];
-        for (let i = 0; i <= steps; i++) {
-          const a = (startDeg + (endDeg - startDeg) * i / steps) * Math.PI / 180;
-          out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
-        }
-        return out;
-      };
-      pts = [
-        ...arc(r,   r,   180, 270),  // top-left
-        ...arc(w-r, r,   270, 360),  // top-right
-        ...arc(w-r, h-r,   0,  90),  // bottom-right
-        ...arc(r,   h-r,  90, 180),  // bottom-left
-      ];
-    }
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const dx = c * (w + gap);
+      const dy = r * (h + gap);
 
-    entities += `0\nLWPOLYLINE\n8\n0\n90\n${pts.length}\n70\n1\n`;
-    for (const [x, y] of pts) {
-      entities += `10\n${+x.toFixed(6)}\n20\n${+y.toFixed(6)}\n`;
+      if (shape === 'circle') {
+        const rad = w / 2;
+        entities += `0\nCIRCLE\n8\n0\n10\n${+(rad + dx).toFixed(6)}\n20\n${+(rad + dy).toFixed(6)}\n30\n0.0\n40\n${rad}\n`;
+      } else if (shape === 'oval') {
+        // DXF ELLIPSE: center, major-axis endpoint vector, ratio minor/major
+        const cx = w/2 + dx, cy = h/2 + dy;
+        const majorR = w/2;
+        const ratio  = (h/2) / majorR;
+        entities += `0\nELLIPSE\n8\n0\n10\n${cx}\n20\n${cy}\n30\n0.0\n` +
+                    `11\n${majorR}\n21\n0.0\n31\n0.0\n40\n${ratio}\n41\n0.0\n42\n6.283185307\n`;
+      } else {
+        // Rectangle variants – output as LWPOLYLINE
+        let pts = [];
+        if (corner === 'square') {
+          pts = [[0,0],[w,0],[w,h],[0,h]];
+        } else if (corner === 'mitered') {
+          const m = Math.min(val('d-miter',1), w/2-0.01, h/2-0.01);
+          pts = [[m,0],[w-m,0],[w,m],[w,h-m],[w-m,h],[m,h],[0,h-m],[0,m]];
+        } else if (corner === 'rounded') {
+          // Approximate rounded corners with 8-point arc interpolation per corner
+          const rad = Math.min(val('d-radius',0.5), w/2-0.01, h/2-0.01);
+          const steps = 8;
+          const arc = (cx, cy, startDeg, endDeg) => {
+            const out = [];
+            for (let i = 0; i <= steps; i++) {
+              const a = (startDeg + (endDeg - startDeg) * i / steps) * Math.PI / 180;
+              out.push([cx + rad * Math.cos(a), cy + rad * Math.sin(a)]);
+            }
+            return out;
+          };
+          pts = [
+            ...arc(rad,   rad,   180, 270),  // top-left
+            ...arc(w-rad, rad,   270, 360),  // top-right
+            ...arc(w-rad, h-rad,   0,  90),  // bottom-right
+            ...arc(rad,   h-rad,  90, 180),  // bottom-left
+          ];
+        }
+
+        entities += `0\nLWPOLYLINE\n8\n0\n90\n${pts.length}\n70\n1\n`;
+        for (const [x, y] of pts) {
+          entities += `10\n${+(x + dx).toFixed(6)}\n20\n${+(y + dy).toFixed(6)}\n`;
+        }
+      }
     }
   }
 
