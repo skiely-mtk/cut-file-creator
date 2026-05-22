@@ -708,31 +708,114 @@ function buildPreviewSVG({ w, h }) {
   const totalPiecesH = rows * h + (rows - 1) * gap;
   const scale = Math.min(maxW / totalPiecesW, maxH / totalPiecesH);
 
-  const sw   = w   * scale;   // scaled single-piece width
-  const sh   = h   * scale;   // scaled single-piece height
-  const sgap = gap * scale;   // scaled gap between pieces
+  const sw   = w   * scale;
+  const sh   = h   * scale;
+  const sgap = gap * scale;
 
   const totalGridW = cols * sw + (cols - 1) * sgap;
   const totalGridH = rows * sh + (rows - 1) * sgap;
 
-  // Padding around the grid for callout lines
-  const PL = 55, PR = 65, PT = 44;
-  const PB = shape === 'rectangle' && (corner === 'mitered' || corner === 'mitered2') ? 90 : 28;
+  // Extra padding to accommodate rotated piece bounding box
+  // A piece rotated by θ has screen bounding box: (sw|cosθ|+sh|sinθ) × (sw|sinθ|+sh|cosθ)
+  const rotRad = rotation * Math.PI / 180;
+  const cosR   = Math.abs(Math.cos(rotRad));
+  const sinR   = Math.abs(Math.sin(rotRad));
+  const rotSW  = sw * cosR + sh * sinR;
+  const rotSH  = sw * sinR + sh * cosR;
+  const extraW = (rotSW - sw) / 2;
+  const extraH = (rotSH - sh) / 2;
+
+  const hasMiterAnnot = shape === 'rectangle' && (corner === 'mitered' || corner === 'mitered2');
+  const PL = 55 + extraW,  PR = 65 + extraW;
+  const PT = 44 + extraH,  PB = (hasMiterAnnot ? 90 : 28) + extraH;
   const svgW = totalGridW + PL + PR;
   const svgH = totalGridH + PT + PB;
-
-  // Grid origin within SVG
   const ox = PL, oy = PT;
 
   const path = buildPath(w, h);
 
-  // Pre-compute notch data (used inside piece loop)
+  // ── Callout annotations drawn in LOCAL (inch) coords ──────────────
+  // They live inside the first piece's transform group, so they rotate
+  // with the shape automatically.
+  //
+  // Conversions: screen_px = local_in × scale, so:
+  //   local_in = screen_px / scale
+  // vector-effect="non-scaling-stroke" keeps stroke widths at their
+  // pixel value regardless of the scale transform.
+  const off  = 22 / scale;   // callout line distance from shape edge (px→in)
+  const tick =  5 / scale;   // tick mark half-length
+  const fs   = 14 / scale;   // label font size
+  const LS   = `stroke="#4a7fb5" stroke-width="1.5" vector-effect="non-scaling-stroke"`;
+  const TS   = `fill="#333" font-family="Helvetica, Arial, sans-serif" font-weight="600"`;
+
+  let localAnnots = '';
+
+  if (shape === 'circle') {
+    // Diameter line through piece center
+    localAnnots = `
+      <line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" ${LS}/>
+      <text x="${w/2}" y="${h/2 - 9/scale}" text-anchor="middle"
+            font-size="${fs}" ${TS}>${w}"</text>`;
+  } else {
+    // Width callout — above the top edge
+    localAnnots += `
+      <line x1="0" y1="${-off}" x2="${w}" y2="${-off}" ${LS}/>
+      <line x1="0" y1="${-off-tick}" x2="0" y2="${-off+tick}" ${LS}/>
+      <line x1="${w}" y1="${-off-tick}" x2="${w}" y2="${-off+tick}" ${LS}/>
+      <text x="${w/2}" y="${-off - 8/scale}" text-anchor="middle"
+            font-size="${fs}" ${TS}>${w}"</text>`;
+
+    // Height callout — right side of entire grid, first piece's height range
+    // In local coords of the first piece, grid right edge = w + (cols-1)*(w+gap)
+    const hX = w + (cols - 1) * (w + gap) + off;
+    localAnnots += `
+      <line x1="${hX}" y1="0" x2="${hX}" y2="${h}" ${LS}/>
+      <line x1="${hX-tick}" y1="0" x2="${hX+tick}" y2="0" ${LS}/>
+      <line x1="${hX-tick}" y1="${h}" x2="${hX+tick}" y2="${h}" ${LS}/>
+      <text x="${hX + 9/scale}" y="${h/2}" dominant-baseline="middle"
+            font-size="${fs}" ${TS}>${h}"</text>`;
+
+    // Miter callout — below the bottom edge, arrow pointing to mitered corner
+    if (hasMiterAnnot) {
+      const miter    = val('d-miter', 1);
+      const safeM    = Math.min(miter, w/2 - 0.01, h/2 - 0.01);
+      const isMiter2 = corner === 'mitered2';
+      const labelY   = h + 58/scale;
+      const tipX     = (isMiter2 && cornerEnd === 'right') ? w - safeM * 0.5 : safeM * 0.5;
+      const tipY     = h;
+      const startX   = (isMiter2 && cornerEnd === 'right')
+                       ? Math.max(tipX - 40/scale, w * 0.5)
+                       : w * 0.5;
+      const startY   = labelY - 10/scale;
+      const clabel   = isMiter2 ? '2 corners' : 'all 4 corners';
+
+      // Arrowhead: hand-drawn filled triangle (avoids SVG marker complexity in transforms)
+      const adx = tipX - startX, ady = tipY - startY;
+      const alen = Math.sqrt(adx*adx + ady*ady) || 1;
+      const anx  = adx/alen, any = ady/alen;   // unit vector along arrow
+      const al   = 8/scale, aw = 4/scale;      // arrowhead length and half-width
+      const px   = -any * aw,  py  = anx * aw; // perpendicular
+      const ax1  = tipX - anx*al + px, ay1 = tipY - any*al + py;
+      const ax2  = tipX - anx*al - px, ay2 = tipY - any*al - py;
+
+      localAnnots += `
+        <line x1="${startX}" y1="${startY}" x2="${tipX}" y2="${tipY}"
+              stroke="#333" stroke-width="1" vector-effect="non-scaling-stroke"/>
+        <polygon points="${tipX},${tipY} ${ax1},${ay1} ${ax2},${ay2}" fill="#333"/>
+        <text x="${-5/scale}" y="${labelY + 5/scale}" text-anchor="start"
+              font-size="${12.5/scale}" fill="#333"
+              font-family="Helvetica, Arial, sans-serif">
+          ${miter}" miter cut on ${clabel}
+        </text>`;
+    }
+  }
+
+  // ── Notch marks and shape path — inside each piece's transform group ──
   const notches = getNotches();
-  const TICK = 8;   // desired px size above/below the edge
-  const td   = TICK / scale;  // same length expressed in local (inch) coords
+  const TICK = 8;
+  const td   = TICK / scale;
   const NS   = `stroke="#1a1a1a" stroke-width="1.5" vector-effect="non-scaling-stroke"`;
 
-  // Build all pieces (notch tick marks live inside each piece group so they rotate)
   let pieces = '';
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -749,99 +832,22 @@ function buildPreviewSVG({ w, h }) {
         notchLines += `<line x1="${w-td}" y1="${np}" x2="${w+td}" y2="${np}" ${NS}/>`;
       }
 
+      // Annotations only on the first piece
+      const firstAnnots = (r === 0 && c === 0) ? localAnnots : '';
+
       pieces += `<g transform="translate(${tx},${ty}) scale(${scale}) rotate(${rotation},${w/2},${h/2})">
       <path d="${path}" fill="none" stroke="#1a1a1a"
             stroke-width="1.5" vector-effect="non-scaling-stroke"
             stroke-linejoin="miter" stroke-linecap="butt"/>
       ${notchLines}
+      ${firstAnnots}
     </g>`;
-    }
-  }
-
-  // --- Callout annotations (always describe a single piece) ---
-  let annots = '';
-  const miter = val('d-miter', 1);
-
-  if (shape === 'circle') {
-    // Diameter line through center of first piece
-    const cx = ox + sw/2, cy = oy + sh/2;
-    annots = `
-      <line x1="${ox}" y1="${cy}" x2="${ox+sw}" y2="${cy}"
-            stroke="#4a7fb5" stroke-width="1.5"/>
-      <text x="${cx}" y="${cy - 9}"
-            text-anchor="middle" font-size="14" fill="#333"
-            font-family="Helvetica, Arial, sans-serif" font-weight="600">
-        ${w}"
-      </text>`;
-  } else {
-    // Width callout (top of first piece)
-    const yt = oy - 22;
-    annots += `
-      <line x1="${ox}" y1="${yt}" x2="${ox+sw}" y2="${yt}"
-            stroke="#4a7fb5" stroke-width="1.5"/>
-      <line x1="${ox}" y1="${yt-5}" x2="${ox}" y2="${yt+5}"
-            stroke="#4a7fb5" stroke-width="1.5"/>
-      <line x1="${ox+sw}" y1="${yt-5}" x2="${ox+sw}" y2="${yt+5}"
-            stroke="#4a7fb5" stroke-width="1.5"/>
-      <text x="${ox + sw/2}" y="${yt-8}"
-            text-anchor="middle" font-size="14" fill="#333"
-            font-family="Helvetica, Arial, sans-serif" font-weight="600">
-        ${w}"
-      </text>`;
-
-    // Height callout (right side of grid, spanning first piece's height)
-    const xr = ox + totalGridW + 22;
-    annots += `
-      <line x1="${xr}" y1="${oy}" x2="${xr}" y2="${oy+sh}"
-            stroke="#4a7fb5" stroke-width="1.5"/>
-      <line x1="${xr-5}" y1="${oy}" x2="${xr+5}" y2="${oy}"
-            stroke="#4a7fb5" stroke-width="1.5"/>
-      <line x1="${xr-5}" y1="${oy+sh}" x2="${xr+5}" y2="${oy+sh}"
-            stroke="#4a7fb5" stroke-width="1.5"/>
-      <text x="${xr+9}" y="${oy + sh/2}"
-            dominant-baseline="middle" font-size="14" fill="#333"
-            font-family="Helvetica, Arial, sans-serif" font-weight="600">
-        ${h}"
-      </text>`;
-
-    // Miter callout label — below the entire grid
-    if (shape !== 'oval' && (corner === 'mitered' || corner === 'mitered2')) {
-      const isMiter2   = corner === 'mitered2';
-      const labelY     = oy + totalGridH + 58;
-      // Arrow tip points to one of the mitered corners at the bottom of the first piece
-      const arrowTipX  = (isMiter2 && cornerEnd === 'right')
-                         ? ox + sw - (miter * scale) * 0.5
-                         : ox + (miter * scale) * 0.5;
-      const arrowTipY  = oy + totalGridH;
-      const arrowStartX = (isMiter2 && cornerEnd === 'right')
-                          ? Math.max(arrowTipX - 40, ox + sw / 2)
-                          : 175;
-      const arrowStartY = labelY - 10;
-      const cornerLabel = isMiter2 ? '2 corners' : 'all 4 corners';
-
-      annots += `
-        <defs>
-          <marker id="arr" markerWidth="7" markerHeight="7"
-                  refX="6" refY="3.5" orient="auto">
-            <path d="M0,0 L0,7 L7,3.5 Z" fill="#333"/>
-          </marker>
-        </defs>
-        <line x1="${arrowStartX}" y1="${arrowStartY}"
-              x2="${arrowTipX}" y2="${arrowTipY}"
-              stroke="#333" stroke-width="1"
-              marker-end="url(#arr)"/>
-        <text x="5" y="${labelY + 5}"
-              text-anchor="start" font-size="12.5" fill="#333"
-              font-family="Helvetica, Arial, sans-serif">
-          ${miter}" miter cut on ${cornerLabel}
-        </text>`;
     }
   }
 
   return `<svg xmlns="http://www.w3.org/2000/svg"
               width="${svgW}" height="${svgH}"
               style="overflow:visible">
-    ${annots}
     ${pieces}
   </svg>`;
 }
