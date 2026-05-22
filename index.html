@@ -105,6 +105,13 @@
 
     .dim-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
+    /* rotation control */
+    .rot-row { display: flex; align-items: center; gap: 10px; }
+    .rot-row input[type="range"] { flex: 1; cursor: pointer; }
+    .rot-num { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .rot-num input { width: 58px; }
+    .rot-num span { font-size: 13px; color: var(--muted); font-weight: 600; }
+
     /* shape tabs */
     .shape-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
     .shape-tab {
@@ -360,6 +367,20 @@
       </div>
     </div>
 
+    <!-- ROTATION -->
+    <div class="s-section">
+      <h3>Rotation</h3>
+      <div class="rot-row">
+        <input type="range" id="r-slider" min="0" max="360" step="1" value="0"
+               oninput="document.getElementById('r-deg').value=this.value">
+        <div class="rot-num">
+          <input type="number" id="r-deg" min="0" max="360" step="1" value="0"
+                 oninput="document.getElementById('r-slider').value=this.value">
+          <span>°</span>
+        </div>
+      </div>
+    </div>
+
     <!-- CORNERS (rect + oval only) -->
     <div id="corner-section" class="s-section">
       <h3>Corner Treatment</h3>
@@ -489,9 +510,10 @@
 /* ═══════════════════════════════════════════════════════════
    STATE
 ═══════════════════════════════════════════════════════════ */
-let shape     = 'rectangle';   // 'rectangle' | 'circle' | 'oval'
+let shape     = 'rectangle';   // 'rectangle' | 'circle' | 'oval' | 'octagon'
 let corner    = 'square';      // 'square' | 'mitered' | 'rounded' | 'mitered2' | 'rounded2'
 let cornerEnd = 'right';       // 'right' (top-right+bottom-right) | 'left' (top-left+bottom-left)
+let rotation  = 0;             // degrees, 0-360
 
 /* ═══════════════════════════════════════════════════════════
    HELPERS – READ CURRENT INPUT VALUES
@@ -593,6 +615,21 @@ function show(id, yes) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   ROTATION HELPER
+   Rotates a point [x,y] around center (cx,cy) by deg degrees.
+   deg is clockwise (SVG convention).
+═══════════════════════════════════════════════════════════ */
+function rotatePt(x, y, cx, cy, deg) {
+  if (!deg) return [x, y];
+  const a   = deg * Math.PI / 180;
+  const cos = Math.cos(a), sin = Math.sin(a);
+  return [
+    cx + (x - cx) * cos - (y - cy) * sin,
+    cy + (x - cx) * sin + (y - cy) * cos,
+  ];
+}
+
+/* ═══════════════════════════════════════════════════════════
    PATH BUILDER  (coordinates in inches, origin top-left)
 ═══════════════════════════════════════════════════════════ */
 function buildPath(w, h) {
@@ -689,16 +726,34 @@ function buildPreviewSVG({ w, h }) {
 
   const path = buildPath(w, h);
 
-  // Build all pieces
+  // Pre-compute notch data (used inside piece loop)
+  const notches = getNotches();
+  const TICK = 8;   // desired px size above/below the edge
+  const td   = TICK / scale;  // same length expressed in local (inch) coords
+  const NS   = `stroke="#1a1a1a" stroke-width="1.5" vector-effect="non-scaling-stroke"`;
+
+  // Build all pieces (notch tick marks live inside each piece group so they rotate)
   let pieces = '';
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const tx = ox + c * (sw + sgap);
       const ty = oy + r * (sh + sgap);
-      pieces += `<g transform="translate(${tx},${ty}) scale(${scale})">
+
+      let notchLines = '';
+      for (const np of notches.wPositions) {
+        notchLines += `<line x1="${np}" y1="${-td}" x2="${np}" y2="${td}" ${NS}/>`;
+        notchLines += `<line x1="${np}" y1="${h-td}" x2="${np}" y2="${h+td}" ${NS}/>`;
+      }
+      for (const np of notches.hPositions) {
+        notchLines += `<line x1="${-td}" y1="${np}" x2="${td}" y2="${np}" ${NS}/>`;
+        notchLines += `<line x1="${w-td}" y1="${np}" x2="${w+td}" y2="${np}" ${NS}/>`;
+      }
+
+      pieces += `<g transform="translate(${tx},${ty}) scale(${scale}) rotate(${rotation},${w/2},${h/2})">
       <path d="${path}" fill="none" stroke="#1a1a1a"
             stroke-width="1.5" vector-effect="non-scaling-stroke"
             stroke-linejoin="miter" stroke-linecap="butt"/>
+      ${notchLines}
     </g>`;
     }
   }
@@ -783,39 +838,11 @@ function buildPreviewSVG({ w, h }) {
     }
   }
 
-  // --- Notch tick marks (drawn in screen coords so size is constant) ---
-  const notches = getNotches();
-  let notchMarks = '';
-  const TICK = 8;   // px above and below the edge
-  const TICK_STROKE = `stroke="#1a1a1a" stroke-width="1.5"`;
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const px = ox + c * (sw + sgap);   // piece origin x (screen)
-      const py = oy + r * (sh + sgap);   // piece origin y (screen)
-
-      // Notches along width: tick marks on top and bottom edges
-      for (const np of notches.wPositions) {
-        const sx = px + np * scale;
-        notchMarks += `<line x1="${sx}" y1="${py - TICK}" x2="${sx}" y2="${py + TICK}" ${TICK_STROKE}/>`;
-        notchMarks += `<line x1="${sx}" y1="${py + sh - TICK}" x2="${sx}" y2="${py + sh + TICK}" ${TICK_STROKE}/>`;
-      }
-
-      // Notches along height: tick marks on left and right edges
-      for (const np of notches.hPositions) {
-        const sy = py + np * scale;
-        notchMarks += `<line x1="${px - TICK}" y1="${sy}" x2="${px + TICK}" y2="${sy}" ${TICK_STROKE}/>`;
-        notchMarks += `<line x1="${px + sw - TICK}" y1="${sy}" x2="${px + sw + TICK}" y2="${sy}" ${TICK_STROKE}/>`;
-      }
-    }
-  }
-
   return `<svg xmlns="http://www.w3.org/2000/svg"
               width="${svgW}" height="${svgH}"
               style="overflow:visible">
     ${annots}
     ${pieces}
-    ${notchMarks}
   </svg>`;
 }
 
@@ -853,6 +880,7 @@ function cutSizeLabel({ w, h }) {
    MAIN UPDATE  – refreshes preview + spec meta
 ═══════════════════════════════════════════════════════════ */
 function update() {
+  rotation = val('r-deg', 0);
   const dims = getDims();
   document.getElementById('drawing-area').innerHTML = buildPreviewSVG(dims);
 
@@ -893,23 +921,20 @@ function buildExportSVG({ w, h }) {
       const ty = r * (h + gap);
       let notchLines = '';
 
-      // Notches along width: perpendicular marks on top and bottom edges
+      // Notches in local (piece) coords — they rotate with the group
       for (const np of notches.wPositions) {
-        const x = tx + np;
-        notchLines += `  <line x1="${x}" y1="${ty - NOTCH_D}" x2="${x}" y2="${ty + NOTCH_D}" ${NOTCH_SW}/>\n`;
-        notchLines += `  <line x1="${x}" y1="${ty + h - NOTCH_D}" x2="${x}" y2="${ty + h + NOTCH_D}" ${NOTCH_SW}/>\n`;
+        notchLines += `  <line x1="${np}" y1="${-NOTCH_D}" x2="${np}" y2="${NOTCH_D}" ${NOTCH_SW}/>\n`;
+        notchLines += `  <line x1="${np}" y1="${h - NOTCH_D}" x2="${np}" y2="${h + NOTCH_D}" ${NOTCH_SW}/>\n`;
       }
-      // Notches along height: perpendicular marks on left and right edges
       for (const np of notches.hPositions) {
-        const y = ty + np;
-        notchLines += `  <line x1="${tx - NOTCH_D}" y1="${y}" x2="${tx + NOTCH_D}" y2="${y}" ${NOTCH_SW}/>\n`;
-        notchLines += `  <line x1="${tx + w - NOTCH_D}" y1="${y}" x2="${tx + w + NOTCH_D}" y2="${y}" ${NOTCH_SW}/>\n`;
+        notchLines += `  <line x1="${-NOTCH_D}" y1="${np}" x2="${NOTCH_D}" y2="${np}" ${NOTCH_SW}/>\n`;
+        notchLines += `  <line x1="${w - NOTCH_D}" y1="${np}" x2="${w + NOTCH_D}" y2="${np}" ${NOTCH_SW}/>\n`;
       }
 
-      pieces += `  <g transform="translate(${tx},${ty})">
+      pieces += `  <g transform="translate(${tx},${ty}) rotate(${rotation},${w/2},${h/2})">
     <path d="${path}" fill="none" stroke="#000000"
           stroke-width="0.007" stroke-linecap="butt" stroke-linejoin="miter"/>
-  </g>\n${notchLines}`;
+    ${notchLines}  </g>\n`;
     }
   }
 
@@ -947,18 +972,24 @@ function buildExportDXF({ w, h }) {
       const dy = r * (h + gap);
 
       if (shape === 'circle') {
+        // Circles are rotationally symmetric — no rotation needed
         const rad = w / 2;
         entities += `0\nCIRCLE\n8\n0\n10\n${+(rad + dx).toFixed(6)}\n20\n${+(rad + dy).toFixed(6)}\n30\n0.0\n40\n${rad}\n`;
       } else if (shape === 'oval') {
-        // DXF ELLIPSE: center, major-axis endpoint vector, ratio minor/major
+        // DXF ELLIPSE: center + rotated major-axis vector + minor/major ratio
         const cx = w/2 + dx, cy = h/2 + dy;
         const majorR = w/2;
         const ratio  = (h/2) / majorR;
+        // Rotate major axis (initially pointing right) by rotation angle
+        const ra = rotation * Math.PI / 180;
+        const majorX = +(majorR * Math.cos(ra)).toFixed(6);
+        const majorY = +(majorR * Math.sin(ra)).toFixed(6);
         entities += `0\nELLIPSE\n8\n0\n10\n${cx}\n20\n${cy}\n30\n0.0\n` +
-                    `11\n${majorR}\n21\n0.0\n31\n0.0\n40\n${ratio}\n41\n0.0\n42\n6.283185307\n`;
+                    `11\n${majorX}\n21\n${majorY}\n31\n0.0\n40\n${ratio}\n41\n0.0\n42\n6.283185307\n`;
       } else if (shape === 'octagon') {
         const c = w / (2 + Math.SQRT2);
-        const pts = [[c,0],[w-c,0],[w,c],[w,h-c],[w-c,h],[c,h],[0,h-c],[0,c]];
+        let pts = [[c,0],[w-c,0],[w,c],[w,h-c],[w-c,h],[c,h],[0,h-c],[0,c]];
+        if (rotation) pts = pts.map(([x, y]) => rotatePt(x, y, w/2, h/2, rotation));
         entities += `0\nLWPOLYLINE\n8\n0\n90\n${pts.length}\n70\n1\n`;
         for (const [x, y] of pts) {
           entities += `10\n${+(x + dx).toFixed(6)}\n20\n${+(y + dy).toFixed(6)}\n`;
@@ -1029,28 +1060,35 @@ function buildExportDXF({ w, h }) {
           }
         }
 
+        // Apply rotation around piece center before translating to world coords
+        if (rotation) pts = pts.map(([x, y]) => rotatePt(x, y, w/2, h/2, rotation));
         entities += `0\nLWPOLYLINE\n8\n0\n90\n${pts.length}\n70\n1\n`;
         for (const [x, y] of pts) {
           entities += `10\n${+(x + dx).toFixed(6)}\n20\n${+(y + dy).toFixed(6)}\n`;
         }
       }
 
-      // Notch lines (0.25" deep, perpendicular to the edge)
+      // Notch lines (0.25" deep, perpendicular to edge, rotated with the piece)
       const notches = getNotches();
       const ND = 0.25;
       const dxfLine = (x1, y1, x2, y2) =>
         `0\nLINE\n8\n0\n10\n${+x1.toFixed(6)}\n20\n${+y1.toFixed(6)}\n30\n0.0\n` +
         `11\n${+x2.toFixed(6)}\n21\n${+y2.toFixed(6)}\n31\n0.0\n`;
 
+      // Rotate a local point then add piece offset
+      const rp = (x, y) => { const [rx, ry] = rotatePt(x, y, w/2, h/2, rotation); return [dx+rx, dy+ry]; };
+
       for (const np of notches.wPositions) {
-        const x = dx + np;
-        entities += dxfLine(x, dy - ND, x, dy + ND);           // top edge
-        entities += dxfLine(x, dy + h - ND, x, dy + h + ND);   // bottom edge
+        const [ax1, ay1] = rp(np, -ND);  const [ax2, ay2] = rp(np,  ND);
+        const [bx1, by1] = rp(np, h-ND); const [bx2, by2] = rp(np, h+ND);
+        entities += dxfLine(ax1, ay1, ax2, ay2);   // top edge
+        entities += dxfLine(bx1, by1, bx2, by2);   // bottom edge
       }
       for (const np of notches.hPositions) {
-        const y = dy + np;
-        entities += dxfLine(dx - ND, y, dx + ND, y);           // left edge
-        entities += dxfLine(dx + w - ND, y, dx + w + ND, y);   // right edge
+        const [ax1, ay1] = rp(-ND,   np); const [ax2, ay2] = rp( ND,   np);
+        const [bx1, by1] = rp(w-ND,  np); const [bx2, by2] = rp(w+ND,  np);
+        entities += dxfLine(ax1, ay1, ax2, ay2);   // left edge
+        entities += dxfLine(bx1, by1, bx2, by2);   // right edge
       }
     }
   }
