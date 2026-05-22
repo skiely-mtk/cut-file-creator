@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cut File Creator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --brand:   #1a3a5c;
+      --accent:  #4a7fb5;
+      --bg:      #eef0f3;
+      --panel:   #ffffff;
+      --border:  #dde1e7;
+      --text:    #1e2533;
+      --muted:   #6b7280;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── HEADER ─────────────────────────────────────── */
+    header {
+      background: var(--brand);
+      color: white;
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-shrink: 0;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+      z-index: 10;
+    }
+    header svg { width: 28px; height: 28px; opacity: 0.9; }
+    header h1  { font-size: 16px; font-weight: 700; letter-spacing: 0.04em; }
+    header .tagline { font-size: 12px; opacity: 0.55; margin-left: auto; }
+
+    /* ── BODY LAYOUT ─────────────────────────────────── */
+    .app-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── SIDEBAR ─────────────────────────────────────── */
+    .sidebar {
+      width: 300px;
+      flex-shrink: 0;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+    }
+    .sidebar::-webkit-scrollbar { width: 5px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .s-section {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .s-section h3 {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    /* form fields */
+    .field { margin-bottom: 9px; }
+    .field label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 3px;
+      letter-spacing: 0.02em;
+    }
+    .field input, .field select {
+      width: 100%;
+      padding: 6px 9px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: #fff;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .field input:focus, .field select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(74,127,181,0.15);
+    }
+    .field input[type="number"] { -moz-appearance: textfield; }
+    .field input[type="number"]::-webkit-inner-spin-button { opacity: 0.5; }
+
+    .dim-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    /* shape tabs */
+    .shape-tabs { display: flex; gap: 6px; }
+    .shape-tab {
+      flex: 1;
+      padding: 8px 4px 7px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+    .shape-tab:hover { border-color: var(--accent); color: var(--accent); }
+    .shape-tab.active {
+      border-color: var(--accent);
+      background: #eef3fb;
+      color: var(--accent);
+    }
+    .shape-tab svg { width: 26px; height: 26px; }
+
+    /* corner options */
+    .corner-opts { display: flex; gap: 6px; }
+    .corner-opt {
+      flex: 1;
+      padding: 8px 4px 7px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+    .corner-opt:hover { border-color: var(--accent); color: var(--accent); }
+    .corner-opt.active {
+      border-color: var(--accent);
+      background: #eef3fb;
+      color: var(--accent);
+    }
+    .corner-opt svg { display: block; margin: 0 auto 4px; }
+
+    /* buttons */
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 9px 14px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      transition: all 0.15s;
+      margin-bottom: 7px;
+      letter-spacing: 0.01em;
+    }
+    .btn:last-child { margin-bottom: 0; }
+    .btn-primary { background: var(--brand); color: #fff; }
+    .btn-primary:hover { background: #254e7a; }
+    .btn-secondary {
+      background: #fff;
+      color: var(--brand);
+      border: 1.5px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--bg); border-color: var(--accent); }
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1.5px solid var(--border);
+      font-size: 12px;
+    }
+    .btn-ghost:hover { background: var(--bg); }
+
+    /* ── PREVIEW PANEL ───────────────────────────────── */
+    .preview-area {
+      flex: 1;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 32px 40px;
+      overflow: auto;
+      background: #d8dce3;
+    }
+
+    /* the white "page" */
+    .spec-page {
+      background: #fff;
+      box-shadow: 0 4px 28px rgba(0,0,0,0.18);
+      width: 680px;
+      min-height: 820px;
+      padding: 44px 50px 44px;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .spec-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 28px;
+    }
+    .spec-heading {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 14px;
+    }
+    .spec-meta { border-collapse: collapse; }
+    .spec-meta td { padding: 2px 24px 2px 0; font-size: 13.5px; vertical-align: top; }
+    .spec-meta td:first-child { font-weight: 600; white-space: nowrap; color: var(--text); }
+    .spec-meta td:last-child { color: #444; }
+
+    .spec-logo {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--brand);
+      letter-spacing: 0.12em;
+      text-align: right;
+      padding-top: 4px;
+    }
+
+    .drawing-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px 0 8px;
+    }
+
+    /* ── HIDDEN INPUTS REVEAL ────────────────────────── */
+    .conditional { display: none; }
+    .conditional.visible { display: block; }
+    .conditional-row { display: none; }
+    .conditional-row.visible { display: grid; }
+  </style>
+</head>
+<body>
+
+<header>
+  <!-- Scissors icon -->
+  <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="7" cy="7" r="3.5" stroke="white" stroke-width="1.6"/>
+    <circle cx="7" cy="21" r="3.5" stroke="white" stroke-width="1.6"/>
+    <line x1="10" y1="9" x2="24" y2="14" stroke="white" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="10" y1="19" x2="24" y2="14" stroke="white" stroke-width="1.6" stroke-linecap="round"/>
+  </svg>
+  <h1>CUT FILE CREATOR</h1>
+  <span class="tagline">Fabric Cutting Specification Tool</span>
+</header>
+
+<div class="app-body">
+
+  <!-- ════════════════ SIDEBAR ════════════════ -->
+  <aside class="sidebar">
+
+    <!-- JOB INFO -->
+    <div class="s-section">
+      <h3>Job Information</h3>
+      <div class="field"><label>Brand</label>
+        <input id="f-brand" type="text" value="Matouk" placeholder="e.g. Matouk">
+      </div>
+      <div class="field"><label>Style Name / #</label>
+        <input id="f-style" type="text" placeholder="e.g. MSC074 Balthazar">
+      </div>
+      <div class="field"><label>Colors</label>
+        <input id="f-colors" type="text" placeholder="e.g. Emerald, Lapis, Topaz">
+      </div>
+      <div class="field"><label>Product</label>
+        <input id="f-product" type="text" placeholder="e.g. 16 x 108 Runner">
+      </div>
+      <div class="field"><label>Fabric</label>
+        <input id="f-fabric" type="text" placeholder="e.g. Valentina, cut width for width">
+      </div>
+      <div class="field"><label>Notes (optional)</label>
+        <input id="f-notes" type="text" placeholder="e.g. shrinkage 6%W, 4%L">
+      </div>
+    </div>
+
+    <!-- SHAPE -->
+    <div class="s-section">
+      <h3>Shape</h3>
+      <div class="shape-tabs">
+        <button class="shape-tab active" data-shape="rectangle" onclick="setShape('rectangle')">
+          <svg viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="6" width="22" height="14"/>
+          </svg>
+          Rectangle
+        </button>
+        <button class="shape-tab" data-shape="circle" onclick="setShape('circle')">
+          <svg viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="13" cy="13" r="10"/>
+          </svg>
+          Circle
+        </button>
+        <button class="shape-tab" data-shape="oval" onclick="setShape('oval')">
+          <svg viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="2">
+            <ellipse cx="13" cy="13" rx="12" ry="8"/>
+          </svg>
+          Oval
+        </button>
+      </div>
+    </div>
+
+    <!-- DIMENSIONS -->
+    <div class="s-section">
+      <h3>Dimensions (inches)</h3>
+
+      <!-- Rectangle dims -->
+      <div id="dims-rect" class="dim-row visible conditional-row">
+        <div class="field"><label>Width</label>
+          <input id="d-w" type="number" value="19" min="0.25" step="0.25">
+        </div>
+        <div class="field"><label>Height / Length</label>
+          <input id="d-h" type="number" value="111" min="0.25" step="0.25">
+        </div>
+      </div>
+
+      <!-- Circle dims -->
+      <div id="dims-circle" class="conditional">
+        <div class="field"><label>Diameter</label>
+          <input id="d-dia" type="number" value="76" min="0.25" step="0.25">
+        </div>
+      </div>
+
+      <!-- Oval dims -->
+      <div id="dims-oval" class="conditional">
+        <div class="dim-row">
+          <div class="field"><label>Width</label>
+            <input id="d-ow" type="number" value="60" min="0.25" step="0.25">
+          </div>
+          <div class="field"><label>Height</label>
+            <input id="d-oh" type="number" value="90" min="0.25" step="0.25">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CORNERS (rect + oval only) -->
+    <div id="corner-section" class="s-section">
+      <h3>Corner Treatment</h3>
+      <div class="corner-opts">
+        <div class="corner-opt active" data-corner="square" onclick="setCorner('square')">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 3 L19 3 L19 19 L3 19 Z"/>
+          </svg>
+          Square
+        </div>
+        <div class="corner-opt" data-corner="mitered" onclick="setCorner('mitered')">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M7 3 L15 3 L19 7 L19 15 L15 19 L7 19 L3 15 L3 7 Z"/>
+          </svg>
+          Mitered
+        </div>
+        <div class="corner-opt" data-corner="rounded" onclick="setCorner('rounded')">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="16" height="16" rx="4.5"/>
+          </svg>
+          Rounded
+        </div>
+      </div>
+
+      <div id="miter-field" class="field conditional" style="margin-top:10px">
+        <label>Miter Size (in)</label>
+        <input id="d-miter" type="number" value="1" min="0.125" step="0.125">
+      </div>
+      <div id="radius-field" class="field conditional" style="margin-top:10px">
+        <label>Corner Radius (in)</label>
+        <input id="d-radius" type="number" value="0.5" min="0.125" step="0.125">
+      </div>
+    </div>
+
+    <!-- EXPORT -->
+    <div class="s-section">
+      <h3>Export</h3>
+      <button class="btn btn-primary" onclick="downloadSVG()">↓ Download Cut File (SVG)</button>
+      <button class="btn btn-secondary" onclick="downloadDXF()">↓ Download Cut File (DXF)</button>
+      <button class="btn btn-ghost" onclick="printSpec()">⎙ Print Spec Sheet</button>
+    </div>
+
+  </aside>
+
+  <!-- ════════════════ PREVIEW ════════════════ -->
+  <main class="preview-area">
+    <div class="spec-page" id="spec-page">
+
+      <div class="spec-top">
+        <div>
+          <div class="spec-heading">CUTTING SPEC</div>
+          <table class="spec-meta">
+            <tr><td>Brand:</td>      <td id="m-brand">—</td></tr>
+            <tr><td>Style Name/#:</td><td id="m-style">—</td></tr>
+            <tr><td>Colors:</td>     <td id="m-colors">—</td></tr>
+            <tr><td>Product:</td>    <td id="m-product">—</td></tr>
+            <tr><td>Fabric:</td>     <td id="m-fabric">—</td></tr>
+            <tr><td>Cut Size:</td>   <td id="m-cutsize">—</td></tr>
+          </table>
+        </div>
+        <div class="spec-logo">MATOUK</div>
+      </div>
+
+      <div class="drawing-area" id="drawing-area">
+        <!-- SVG preview injected here -->
+      </div>
+
+    </div>
+  </main>
+
+</div><!-- end app-body -->
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════════ */
+let shape  = 'rectangle';   // 'rectangle' | 'circle' | 'oval'
+let corner = 'square';      // 'square'    | 'mitered' | 'rounded'
+
+/* ═══════════════════════════════════════════════════════════
+   HELPERS – READ CURRENT INPUT VALUES
+═══════════════════════════════════════════════════════════ */
+function val(id, fallback) {
+  const v = parseFloat(document.getElementById(id).value);
+  return isNaN(v) ? fallback : v;
+}
+function txt(id) { return document.getElementById(id).value.trim(); }
+
+function getDims() {
+  if (shape === 'rectangle') return { w: val('d-w', 19),  h: val('d-h', 111) };
+  if (shape === 'circle')    return { w: val('d-dia', 76), h: val('d-dia', 76) };
+  if (shape === 'oval')      return { w: val('d-ow', 60),  h: val('d-oh', 90)  };
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SHAPE SETTERS
+═══════════════════════════════════════════════════════════ */
+function setShape(s) {
+  shape = s;
+  document.querySelectorAll('.shape-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.shape === s));
+
+  show('dims-rect',    s === 'rectangle');
+  show('dims-circle',  s === 'circle');
+  show('dims-oval',    s === 'oval');
+  // oval can also have corners
+  document.getElementById('corner-section').style.display =
+    (s === 'circle') ? 'none' : 'block';
+  update();
+}
+
+function setCorner(c) {
+  corner = c;
+  document.querySelectorAll('.corner-opt').forEach(o =>
+    o.classList.toggle('active', o.dataset.corner === c));
+  show('miter-field',  c === 'mitered');
+  show('radius-field', c === 'rounded');
+  update();
+}
+
+function show(id, yes) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  // Use the right display mode based on the element type
+  if (el.classList.contains('conditional-row')) {
+    el.style.display = yes ? 'grid' : 'none';
+  } else {
+    el.style.display = yes ? 'block' : 'none';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PATH BUILDER  (coordinates in inches, origin top-left)
+═══════════════════════════════════════════════════════════ */
+function buildPath(w, h) {
+  if (shape === 'circle' || (shape === 'oval' && w === h)) {
+    // Use circle path for perfect circles
+    const r = w / 2;
+    return `M 0,${r} A ${r},${r} 0 1,0 ${w},${r} A ${r},${r} 0 1,0 0,${r} Z`;
+  }
+  if (shape === 'oval') {
+    const rx = w / 2, ry = h / 2;
+    return `M 0,${ry} A ${rx},${ry} 0 1,0 ${w},${ry} A ${rx},${ry} 0 1,0 0,${ry} Z`;
+  }
+  // Rectangle variants
+  if (corner === 'square') {
+    return `M 0,0 L ${w},0 L ${w},${h} L 0,${h} Z`;
+  }
+  if (corner === 'mitered') {
+    const m = val('d-miter', 1);
+    const safeM = Math.min(m, w/2 - 0.01, h/2 - 0.01);
+    return `M ${safeM},0 L ${w-safeM},0 L ${w},${safeM} ` +
+           `L ${w},${h-safeM} L ${w-safeM},${h} ` +
+           `L ${safeM},${h} L 0,${h-safeM} L 0,${safeM} Z`;
+  }
+  if (corner === 'rounded') {
+    const r = val('d-radius', 0.5);
+    const safeR = Math.min(r, w/2 - 0.01, h/2 - 0.01);
+    return `M ${safeR},0 L ${w-safeR},0 Q ${w},0 ${w},${safeR} ` +
+           `L ${w},${h-safeR} Q ${w},${h} ${w-safeR},${h} ` +
+           `L ${safeR},${h} Q 0,${h} 0,${h-safeR} ` +
+           `L 0,${safeR} Q 0,0 ${safeR},0 Z`;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PREVIEW SVG  (scaled to fit, with dimension callouts)
+═══════════════════════════════════════════════════════════ */
+function buildPreviewSVG({ w, h }) {
+  // --- scale to fit in preview area ---
+  const maxW = 420, maxH = 500;
+  const scale = Math.min(maxW / w, maxH / h);
+  const sw = w * scale;
+  const sh = h * scale;
+
+  // Padding around the shape for callout lines
+  const PL = 55, PR = 65, PT = 44, PB = shape === 'rectangle' && corner === 'mitered' ? 52 : 28;
+  const totalW = sw + PL + PR;
+  const totalH = sh + PT + PB;
+
+  // Shape origin within SVG
+  const ox = PL, oy = PT;
+
+  const path = buildPath(w, h);
+
+  // --- Callout annotations ---
+  let annots = '';
+  const miter    = val('d-miter', 1);
+  const diameter = val('d-dia', 76);
+
+  if (shape === 'circle') {
+    // Diameter line through center
+    const cx = ox + sw/2, cy = oy + sh/2;
+    annots = `
+      <line x1="${ox}" y1="${cy}" x2="${ox+sw}" y2="${cy}"
+            stroke="#4a7fb5" stroke-width="1.5"/>
+      <text x="${cx}" y="${cy - 9}"
+            text-anchor="middle" font-size="14" fill="#333"
+            font-family="Helvetica, Arial, sans-serif" font-weight="600">
+        ${w}"
+      </text>`;
+  } else {
+    // Width callout (top)
+    const yt = oy - 22;
+    annots += `
+      <line x1="${ox}" y1="${yt}" x2="${ox+sw}" y2="${yt}"
+            stroke="#4a7fb5" stroke-width="1.5"/>
+      <line x1="${ox}" y1="${yt-5}" x2="${ox}" y2="${yt+5}"
+            stroke="#4a7fb5" stroke-width="1.5"/>
+      <line x1="${ox+sw}" y1="${yt-5}" x2="${ox+sw}" y2="${yt+5}"
+            stroke="#4a7fb5" stroke-width="1.5"/>
+      <text x="${ox + sw/2}" y="${yt-8}"
+            text-anchor="middle" font-size="14" fill="#333"
+            font-family="Helvetica, Arial, sans-serif" font-weight="600">
+        ${w}"
+      </text>`;
+
+    // Height callout (right)
+    const xr = ox + sw + 22;
+    annots += `
+      <line x1="${xr}" y1="${oy}" x2="${xr}" y2="${oy+sh}"
+            stroke="#4a7fb5" stroke-width="1.5"/>
+      <line x1="${xr-5}" y1="${oy}" x2="${xr+5}" y2="${oy}"
+            stroke="#4a7fb5" stroke-width="1.5"/>
+      <line x1="${xr-5}" y1="${oy+sh}" x2="${xr+5}" y2="${oy+sh}"
+            stroke="#4a7fb5" stroke-width="1.5"/>
+      <text x="${xr+9}" y="${oy + sh/2}"
+            dominant-baseline="middle" font-size="14" fill="#333"
+            font-family="Helvetica, Arial, sans-serif" font-weight="600">
+        ${h}"
+      </text>`;
+
+    // Miter callout label
+    if (shape !== 'oval' && corner === 'mitered') {
+      const labelX = ox - 5;
+      const labelY = oy + sh + 36;
+      const arrowTipX = ox + (miter * scale) / 2;
+      const arrowTipY = oy + sh - (miter * scale) / 2;
+
+      annots += `
+        <defs>
+          <marker id="arr" markerWidth="7" markerHeight="7"
+                  refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L0,7 L7,3.5 Z" fill="#333"/>
+          </marker>
+        </defs>
+        <line x1="${labelX + 130}" y1="${labelY - 10}"
+              x2="${arrowTipX}" y2="${arrowTipY}"
+              stroke="#333" stroke-width="1"
+              marker-end="url(#arr)"/>
+        <text x="${labelX + 68}" y="${labelY + 5}"
+              text-anchor="middle" font-size="12.5" fill="#333"
+              font-family="Helvetica, Arial, sans-serif">
+          ${miter}" miter cut on all 4 corners
+        </text>`;
+    }
+  }
+
+  const strokeW = Math.max(0.8, 1.5 / scale);
+
+  return `<svg xmlns="http://www.w3.org/2000/svg"
+              width="${totalW}" height="${totalH}"
+              style="overflow:visible">
+    ${annots}
+    <g transform="translate(${ox},${oy}) scale(${scale})">
+      <path d="${path}"
+            fill="none"
+            stroke="#1a1a1a"
+            stroke-width="${strokeW}"
+            stroke-linejoin="miter"
+            stroke-linecap="butt"/>
+    </g>
+  </svg>`;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CUT SIZE LABEL  (for spec sheet)
+═══════════════════════════════════════════════════════════ */
+function cutSizeLabel({ w, h }) {
+  let s = '';
+  if (shape === 'circle')      s = `${w}" Round`;
+  else if (shape === 'oval')   s = `${w}" × ${h}" Oval`;
+  else {
+    s = `${w}" × ${h}"`;
+    if (corner === 'mitered')  s += `, ${val('d-miter',1)}" mitre cut on all 4 corners`;
+    if (corner === 'rounded')  s += `, ${val('d-radius',0.5)}" corner radius`;
+  }
+  const notes = txt('f-notes');
+  if (notes) s += ` — ${notes}`;
+  return s;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MAIN UPDATE  – refreshes preview + spec meta
+═══════════════════════════════════════════════════════════ */
+function update() {
+  const dims = getDims();
+  document.getElementById('drawing-area').innerHTML = buildPreviewSVG(dims);
+
+  const setText = (id, val) => {
+    document.getElementById(id).textContent = val || '—';
+  };
+  setText('m-brand',   txt('f-brand'));
+  setText('m-style',   txt('f-style'));
+  setText('m-colors',  txt('f-colors'));
+  setText('m-product', txt('f-product'));
+  setText('m-fabric',  txt('f-fabric'));
+  setText('m-cutsize', cutSizeLabel(dims));
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EXPORT – SVG CUT FILE
+   Units: inches (width/height in "in", viewBox in inches)
+═══════════════════════════════════════════════════════════ */
+function buildExportSVG({ w, h }) {
+  const path = buildPath(w, h);
+  const style = txt('f-style') || '';
+  const product = txt('f-product') || '';
+  const cutsize = cutSizeLabel({ w, h });
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!-- Cut File Creator — ${style} ${product} -->
+<!-- Cut Size: ${cutsize} -->
+<!-- Units: 1 user unit = 1 inch -->
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="${w}in" height="${h}in"
+     viewBox="0 0 ${w} ${h}">
+  <path d="${path}"
+        fill="none"
+        stroke="#000000"
+        stroke-width="0.007"
+        stroke-linecap="butt"
+        stroke-linejoin="miter"/>
+</svg>`;
+}
+
+function downloadSVG() {
+  const dims = getDims();
+  triggerDownload(
+    buildExportSVG(dims),
+    'image/svg+xml',
+    makeFilename('svg')
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EXPORT – DXF CUT FILE
+   DXF R12 format, INSUNITS = 1 (inches)
+═══════════════════════════════════════════════════════════ */
+function buildExportDXF({ w, h }) {
+  const header = `0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n1\n0\nENDSEC\n`;
+  let entities = `0\nSECTION\n2\nENTITIES\n`;
+
+  if (shape === 'circle') {
+    const r = w / 2;
+    entities += `0\nCIRCLE\n8\n0\n10\n${r}\n20\n${r}\n30\n0.0\n40\n${r}\n`;
+  } else if (shape === 'oval') {
+    // DXF ELLIPSE: center, major-axis endpoint vector, ratio minor/major
+    const cx = w/2, cy = h/2;
+    const majorR = w/2;    // half of major axis (horizontal)
+    const ratio  = (h/2) / majorR;
+    entities += `0\nELLIPSE\n8\n0\n10\n${cx}\n20\n${cy}\n30\n0.0\n` +
+                `11\n${majorR}\n21\n0.0\n31\n0.0\n40\n${ratio}\n41\n0.0\n42\n6.283185307\n`;
+  } else {
+    // Rectangle – output as LWPOLYLINE
+    let pts = [];
+    if (corner === 'square') {
+      pts = [[0,0],[w,0],[w,h],[0,h]];
+    } else if (corner === 'mitered') {
+      const m = Math.min(val('d-miter',1), w/2-0.01, h/2-0.01);
+      pts = [[m,0],[w-m,0],[w,m],[w,h-m],[w-m,h],[m,h],[0,h-m],[0,m]];
+    } else if (corner === 'rounded') {
+      // Approximate rounded corners with 8-point arc interpolation per corner
+      const r = Math.min(val('d-radius',0.5), w/2-0.01, h/2-0.01);
+      const steps = 8;
+      const arc = (cx, cy, startDeg, endDeg) => {
+        const out = [];
+        for (let i = 0; i <= steps; i++) {
+          const a = (startDeg + (endDeg - startDeg) * i / steps) * Math.PI / 180;
+          out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+        }
+        return out;
+      };
+      pts = [
+        ...arc(r,   r,   180, 270),  // top-left
+        ...arc(w-r, r,   270, 360),  // top-right
+        ...arc(w-r, h-r,   0,  90),  // bottom-right
+        ...arc(r,   h-r,  90, 180),  // bottom-left
+      ];
+    }
+
+    entities += `0\nLWPOLYLINE\n8\n0\n90\n${pts.length}\n70\n1\n`;
+    for (const [x, y] of pts) {
+      entities += `10\n${+x.toFixed(6)}\n20\n${+y.toFixed(6)}\n`;
+    }
+  }
+
+  entities += `0\nENDSEC\n0\nEOF\n`;
+  return header + entities;
+}
+
+function downloadDXF() {
+  const dims = getDims();
+  triggerDownload(buildExportDXF(dims), 'application/dxf', makeFilename('dxf'));
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PRINT SPEC SHEET
+═══════════════════════════════════════════════════════════ */
+function printSpec() {
+  const dims = getDims();
+  const svg  = buildPreviewSVG(dims);
+
+  const brand   = txt('f-brand');
+  const style   = txt('f-style');
+  const colors  = txt('f-colors');
+  const product = txt('f-product');
+  const fabric  = txt('f-fabric');
+  const cutsize = cutSizeLabel(dims);
+
+  const row = (label, value) =>
+    `<tr><td>${label}</td><td>${value || '—'}</td></tr>`;
+
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Cutting Spec — ${style || 'Untitled'}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin:0; padding:0; }
+    body {
+      font-family: -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      color: #1e2533;
+      padding: 48px 56px;
+    }
+    .top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:30px; }
+    h1 { font-size:26px; font-weight:700; margin-bottom:16px; letter-spacing:-0.01em; }
+    table { border-collapse:collapse; }
+    td { padding:3px 28px 3px 0; font-size:14px; vertical-align:top; }
+    td:first-child { font-weight:600; white-space:nowrap; }
+    .logo { font-size:16px; font-weight:800; color:#1a3a5c; letter-spacing:0.12em; }
+    .drawing { display:flex; justify-content:center; padding:24px 0 16px; }
+    .no-print { margin-top:30px; }
+    button {
+      padding:9px 20px; font-size:13px; font-weight:600;
+      background:#1a3a5c; color:#fff; border:none;
+      border-radius:7px; cursor:pointer;
+    }
+    @media print { .no-print { display:none; } body { padding:32px 40px; } }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div>
+      <h1>CUTTING SPEC</h1>
+      <table>
+        ${row('Brand:',       brand)}
+        ${row('Style Name/#:', style)}
+        ${row('Colors:',      colors)}
+        ${row('Product:',     product)}
+        ${row('Fabric:',      fabric)}
+        ${row('Cut Size:',    cutsize)}
+      </table>
+    </div>
+    <div class="logo">MATOUK</div>
+  </div>
+  <div class="drawing">${svg}</div>
+  <div class="no-print">
+    <button onclick="window.print()">⎙ Print</button>
+  </div>
+</body>
+</html>`);
+  w.document.close();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   UTILITIES
+═══════════════════════════════════════════════════════════ */
+function makeFilename(ext) {
+  const parts = [
+    txt('f-style') || 'cut',
+    txt('f-product') || shape,
+  ].map(s => s.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, ''));
+  return parts.filter(Boolean).join('_') + '_cut.' + ext;
+}
+
+function triggerDownload(content, mimeType, filename) {
+  const blob = new Blob([content], { type: mimeType });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   WIRE ALL INPUTS  → update()
+═══════════════════════════════════════════════════════════ */
+document.querySelectorAll('.sidebar input, .sidebar select').forEach(el => {
+  el.addEventListener('input', update);
+});
+
+// Initial render
+update();
+</script>
+</body>
+</html>
