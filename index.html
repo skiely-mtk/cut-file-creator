@@ -1033,8 +1033,8 @@ document.querySelectorAll('.sidebar input, .sidebar select').forEach(el => {
   el.addEventListener('input', update);
 });
 
-// Initial render
-update();
+// Initial render — use setShape so all visibility rules run correctly
+setShape('rectangle');
 </script>
 </body>
 </html>
